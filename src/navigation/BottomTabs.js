@@ -8,6 +8,7 @@ import SaleScreen from '../screens/SaleScreen';
 import SalesHistoryScreen from '../screens/SalesHistoryScreen';
 import ProductsScreen from '../screens/ProductsScreen';
 import StockScreen from '../screens/StockScreen';
+import ReceiptSettingsScreen from '../screens/ReceiptSettingsScreen';
 import { colors } from '../theme/colors';
 
 const Tab = createBottomTabNavigator();
@@ -53,6 +54,10 @@ export default function BottomTabs() {
       <Tab.Screen name="Sales" component={SalesHistoryScreen} />
       <Tab.Screen name="Products" component={ProductsScreen} />
       <Tab.Screen name="Stock" component={StockScreen} />
+      <Tab.Screen name="Print" component={ReceiptSettingsScreen} options={{tabBarLabel: 'Print',
+      tabBarIcon: ({ color, size }) => <Icon name="printer" size={size} color={color} />,
+       }}
+      />
     </Tab.Navigator>
   );
 }

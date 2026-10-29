@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,25 +7,10 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import { colors } from '../theme/colors';
-
-const MOCK_SALES = [
-  { id: '1', item: 'Coffee', qty: 2, total: 800 },
-  { id: '2', item: 'Sandwich', qty: 1, total: 650 },
-  { id: '3', item: 'Juice', qty: 3, total: 900 },
-];
-
-const MOCK_PRODUCTS = [
-  { id: 'p1', name: 'Coffee', price: 400, stock: 24, category: 'Coffee', icon: 'coffee' },
-  { id: 'p2', name: 'Sandwich', price: 650, stock: 12, category: 'Food', icon: 'layers' },
-  { id: 'p3', name: 'Juice', price: 300, stock: 8, category: 'Drinks', icon: 'droplet' },
-  { id: 'p4', name: 'Tea', price: 250, stock: 30, category: 'Coffee', icon: 'coffee' },
-  { id: 'p5', name: 'Cake', price: 500, stock: 5, category: 'Bakery', icon: 'gift' },
-  { id: 'p6', name: 'Burger', price: 750, stock: 15, category: 'Food', icon: 'circle' },
-];
-
-const USER = { name: 'Ali Khan', role: 'Cashier' };
+import { getDBConnection } from '../database/db';
 
 const formatPKR = (amount) =>
   `Rs ${new Intl.NumberFormat('en-PK', { maximumFractionDigits: 0 }).format(amount || 0)}`;
@@ -38,9 +23,36 @@ const todayLabel = () =>
   });
 
 export default function DashboardScreen({ navigation }) {
+  const [user, setUser] = useState({ name: 'User', role: 'Staff' });
+
+  // Temporary mock sales data until sales table is created
+  const MOCK_SALES = [
+    { id: '1', item: 'Coffee', qty: 2, total: 800 },
+    { id: '2', item: 'Sandwich', qty: 1, total: 650 },
+    { id: '3', item: 'Juice', qty: 3, total: 900 },
+  ];
+
+  const loadUser = async () => {
+    try {
+      const db = await getDBConnection();
+      const [userRes] = await db.executeSql('SELECT * FROM users LIMIT 1');
+      if (userRes.rows.length > 0) {
+        setUser(userRes.rows.item(0));
+      }
+    } catch (error) {
+      console.error('Error loading user:', error);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUser();
+    }, [])
+  );
+
   const totalToday = MOCK_SALES.reduce((sum, s) => sum + s.total, 0);
   const itemsSold = MOCK_SALES.reduce((sum, s) => sum + s.qty, 0);
-  const avgTicket = Math.round(totalToday / MOCK_SALES.length);
+  const avgTicket = MOCK_SALES.length > 0 ? Math.round(totalToday / MOCK_SALES.length) : 0;
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -48,8 +60,6 @@ export default function DashboardScreen({ navigation }) {
       { text: 'Logout', style: 'destructive', onPress: () => {} },
     ]);
   };
-
-  const goToProducts = () => navigation.navigate('Products');
 
   return (
     <View style={styles.root}>
@@ -61,9 +71,9 @@ export default function DashboardScreen({ navigation }) {
               <Icon name="briefcase" size={20} color="#FFF" />
             </View>
             <View>
-              <Text style={styles.greeting}>Hi, {USER.name.split(' ')[0]}</Text>
+              <Text style={styles.greeting}>Hi, {user.name.split(' ')[0]}</Text>
               <Text style={styles.headerMeta}>
-                My Store · {USER.role}
+                My Store · {user.role}
               </Text>
             </View>
           </View>
@@ -109,43 +119,6 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
-        {/* ===== POPULAR PRODUCTS ===== */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Popular Products</Text>
-          <TouchableOpacity style={styles.seeAll} onPress={goToProducts}>
-            <Text style={styles.sectionLink}>See all</Text>
-            <Icon name="chevron-right" size={14} color={colors.primary} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.grid}>
-          {MOCK_PRODUCTS.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.productCard}
-              onPress={goToProducts}
-              activeOpacity={0.8}
-            >
-              {/* Image Placeholder Area */}
-              <View style={styles.imageWrap}>
-                <Icon name="image" size={36} color={colors.border} />
-              </View>
-
-              {/* Details Area */}
-              <View style={styles.cardInfo}>
-                <Text style={styles.productName} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <Text style={styles.productCategory}>{item.category}</Text>
-                <View style={styles.cardBottomRow}>
-                  <Text style={styles.productPrice}>{formatPKR(item.price)}</Text>
-                  <Text style={styles.stockText}>{item.stock} left</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-
         {/* ===== RECENT SALES ===== */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Sales</Text>
@@ -187,7 +160,7 @@ export default function DashboardScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFA' }, // Slightly off-white background
+  root: { flex: 1, backgroundColor: '#FAFAFA' },
 
   // ===== HEADER =====
   header: {
@@ -235,7 +208,7 @@ const styles = StyleSheet.create({
 
   // GREEN POSTER
   poster: {
-    backgroundColor: '#0F766E', // Deep teal
+    backgroundColor: '#0F766E',
     borderRadius: 20,
     padding: 24,
     flexDirection: 'row',
@@ -277,7 +250,7 @@ const styles = StyleSheet.create({
     bottom: -10,
   },
 
-  // 3 KPI CARDS (with Left Border)
+  // 3 KPI CARDS
   kpiRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -312,40 +285,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginRight: 2,
   },
-
-  // PRODUCT CARDS
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  productCard: {
-    width: '48%',
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    marginBottom: 16,
-    elevation: 2,
-    overflow: 'hidden',
-  },
-  imageWrap: {
-    height: 110,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cardInfo: {
-    padding: 12,
-  },
-  productName: { fontSize: 14, fontWeight: '700', color: colors.text },
-  productCategory: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
-  cardBottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  productPrice: { fontSize: 14, fontWeight: '800', color: colors.text },
-  stockText: { fontSize: 10, color: colors.textMuted, fontWeight: '600' },
 
   // RECENT SALES
   listCard: {

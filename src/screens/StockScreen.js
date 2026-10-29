@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,26 +10,45 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import { colors } from '../theme/colors';
-
-const INITIAL_STOCK = [
-  { id: 'p1', name: 'Coffee', stock: 24, unit: 'cups', icon: 'coffee', category: 'Coffee' },
-  { id: 'p2', name: 'Sandwich', stock: 12, unit: 'pcs', icon: 'layers', category: 'Food' },
-  { id: 'p3', name: 'Juice', stock: 8, unit: 'glasses', icon: 'droplet', category: 'Drinks' },
-  { id: 'p4', name: 'Tea', stock: 30, unit: 'cups', icon: 'coffee', category: 'Coffee' },
-  { id: 'p5', name: 'Cake', stock: 5, unit: 'slices', icon: 'gift', category: 'Bakery' },
-  { id: 'p6', name: 'Burger', stock: 0, unit: 'pcs', icon: 'circle', category: 'Food' },
-];
+import { getDBConnection } from '../database/db';
 
 export default function StockScreen() {
-  const [stockData, setStockData] = useState(INITIAL_STOCK);
+  const [stockData, setStockData] = useState([]);
   const [search, setSearch] = useState('');
   
   // Modal State
   const [selectedItem, setSelectedItem] = useState(null);
   const [adjustmentInput, setAdjustmentInput] = useState('');
+
+  // --- LOAD DATA FROM DB ---
+  const loadStock = async () => {
+    try {
+      const db = await getDBConnection();
+      const [res] = await db.executeSql(`
+        SELECT p.*, c.name as category_name 
+        FROM products p 
+        LEFT JOIN categories c ON p.category_id = c.id
+      `);
+      const loaded = [];
+      for (let i = 0; i < res.rows.length; i++) {
+        loaded.push(res.rows.item(i));
+      }
+      setStockData(loaded);
+    } catch (error) {
+      console.error('Error loading stock:', error);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadStock();
+    }, [])
+  );
 
   // --- CALCULATIONS ---
   const totalItems = stockData.reduce((sum, item) => sum + item.stock, 0);
@@ -54,7 +73,7 @@ export default function StockScreen() {
     setAdjustmentInput('');
   };
 
-  const handleAdjustment = (type) => {
+  const handleAdjustment = async (type) => {
     const amount = parseInt(adjustmentInput, 10);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert('Invalid Input', 'Please enter a valid number greater than 0.');
@@ -65,12 +84,19 @@ export default function StockScreen() {
     if (type === 'add') newStock += amount;
     if (type === 'remove') newStock = Math.max(0, newStock - amount); // Prevent negative
 
-    setStockData((prev) =>
-      prev.map((item) =>
-        item.id === selectedItem.id ? { ...item, stock: newStock } : item
-      )
-    );
-    closeUpdateModal();
+    try {
+      const db = await getDBConnection();
+      await db.executeSql(
+        'UPDATE products SET stock = ? WHERE id = ?',
+        [newStock, selectedItem.id]
+      );
+      
+      closeUpdateModal();
+      loadStock(); // Refresh the local list after DB update
+    } catch (error) {
+      console.error('Error updating stock:', error);
+      Alert.alert('Error', 'Could not update stock in database.');
+    }
   };
 
   return (
@@ -125,7 +151,7 @@ export default function StockScreen() {
         {/* ===== STOCK LIST ===== */}
         <View style={styles.listContainer}>
           {filteredStock.length === 0 ? (
-            <Text style={styles.emptyText}>No items found.</Text>
+            <Text style={styles.emptyText}>No items found in inventory.</Text>
           ) : (
             filteredStock.map((item, index) => {
               const isOut = item.stock === 0;
@@ -137,15 +163,19 @@ export default function StockScreen() {
                   key={item.id}
                   style={[styles.stockRow, !isLast && styles.stockRowBorder]}
                 >
-                  {/* Left Icon */}
+                  {/* Left Icon or Image */}
                   <View style={styles.rowIconWrap}>
-                    <Icon name={item.icon} size={20} color={colors.primary} />
+                    {item.image_uri ? (
+                      <Image source={{ uri: item.image_uri }} style={styles.rowImage} />
+                    ) : (
+                      <Icon name="box" size={20} color={colors.primary} />
+                    )}
                   </View>
 
                   {/* Middle Info */}
                   <View style={styles.rowDetails}>
                     <Text style={styles.rowName}>{item.name}</Text>
-                    <Text style={styles.rowCategory}>{item.category}</Text>
+                    <Text style={styles.rowCategory}>{item.category_name || 'Uncategorized'}</Text>
                   </View>
 
                   {/* Right Stock & Action */}
@@ -164,7 +194,7 @@ export default function StockScreen() {
                           isOut && styles.stockTextOut,
                         ]}
                       >
-                        {item.stock} {item.unit}
+                        {item.stock} pcs
                       </Text>
                     </View>
                     
@@ -209,7 +239,7 @@ export default function StockScreen() {
               <View style={styles.currentStockBadge}>
                 <Text style={styles.currentStockLabel}>Current</Text>
                 <Text style={styles.currentStockValue}>
-                  {selectedItem?.stock} {selectedItem?.unit}
+                  {selectedItem?.stock} pcs
                 </Text>
               </View>
             </View>
@@ -283,7 +313,8 @@ const styles = StyleSheet.create({
   listContainer: { backgroundColor: colors.card, borderRadius: 16, paddingHorizontal: 16, elevation: 2 },
   stockRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16 },
   stockRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  rowIconWrap: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  rowIconWrap: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', marginRight: 12, overflow: 'hidden' },
+  rowImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   rowDetails: { flex: 1 },
   rowName: { fontSize: 14, fontWeight: '700', color: colors.text },
   rowCategory: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
